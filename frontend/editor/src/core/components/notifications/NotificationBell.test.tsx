@@ -19,7 +19,8 @@ const render = (ui: Parameters<typeof baseRender>[0]) =>
 /**
  * The bell renders whatever the server sends, and does with each row's actions only what the registry
  * for this build says it can. Two things are its own and worth pinning: which notifications the user has
- * already looked at, and how a row behaves around an action (message on failure, re-read on success).
+ * already looked at, and how a row behaves around an action (password first, message on failure, re-read
+ * on success).
  */
 
 const fetchNotifications = vi.fn();
@@ -34,11 +35,13 @@ vi.mock("@app/services/notifications", () => ({
 // availability is a fact of the test rather than of the environment.
 const h = vi.hoisted(() => ({
   hasLocalFile: true,
+  retryPayload: { operation: "removePassword" } as unknown,
   specs: {} as Record<
     string,
     {
       available: (context: unknown) => boolean;
       run: (context: unknown, password?: string) => unknown;
+      needsPassword?: boolean;
       closesPanel?: boolean;
     }
   >,
@@ -46,6 +49,7 @@ const h = vi.hoisted(() => ({
 
 vi.mock("@app/services/notificationRetry", () => ({
   hasLocalFile: () => Promise.resolve(h.hasLocalFile),
+  loadRetryPayload: () => Promise.resolve(h.retryPayload),
 }));
 
 // Stands in for the layer that owns the destinations. Core's own registry is empty, so without
@@ -130,6 +134,7 @@ describe("NotificationBell", () => {
     fetchNotifications.mockReset().mockResolvedValue([]);
     runNotificationAction.mockReset().mockResolvedValue(true);
     h.hasLocalFile = true;
+    h.retryPayload = { operation: "removePassword" };
     h.specs = {};
   });
 
@@ -427,16 +432,59 @@ describe("NotificationBell", () => {
     expect(document.querySelector(".notification-bell__actions")).toBeNull();
   });
 
-  it("shows a failed action in the row instead of leaving the user guessing", async () => {
+  it("asks for the password in the row before it retries", async () => {
+    const run = vi.fn().mockResolvedValue({ ok: true });
     h.specs = {
-      VIEW_FILE: {
+      DECRYPT_AND_RETRY: {
         available: () => true,
-        run: () => Promise.resolve({ ok: false, message: "Could not open" }),
+        run,
+        needsPassword: true,
+        closesPanel: true,
       },
     };
     fetchNotifications.mockResolvedValue([
       notification("a", "Password-protected document", {
-        actions: [offer("VIEW_FILE", "RESOLUTION")],
+        actions: [offer("DECRYPT_AND_RETRY", "RESOLUTION")],
+      }),
+    ]);
+    render(<NotificationBell />);
+    await openPanel();
+
+    // First click reveals the field rather than running anything.
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "DECRYPT_AND_RETRY: Password-protected document",
+      }),
+    );
+    expect(run).not.toHaveBeenCalled();
+
+    const field = screen.getByLabelText(
+      "Document password: Password-protected document",
+    );
+    fireEvent.change(field, { target: { value: "hunter2" } });
+    fireEvent.submit(field.closest("form") as HTMLFormElement);
+
+    await waitFor(() => expect(run).toHaveBeenCalledTimes(1));
+    expect(run.mock.calls[0][1]).toBe("hunter2");
+    // The server resolved the incident, so the list is re-read rather than patched here, and the
+    // panel gets out of the way of the document it just produced.
+    await waitFor(() => expect(fetchNotifications).toHaveBeenCalledTimes(2));
+    await waitFor(() =>
+      expect(screen.queryByText("Password-protected document")).toBeNull(),
+    );
+  });
+
+  it("shows a failed unlock in the row instead of leaving the user guessing", async () => {
+    h.specs = {
+      DECRYPT_AND_RETRY: {
+        available: () => true,
+        run: () => Promise.resolve({ ok: false, message: "Wrong password" }),
+        needsPassword: true,
+      },
+    };
+    fetchNotifications.mockResolvedValue([
+      notification("a", "Password-protected document", {
+        actions: [offer("DECRYPT_AND_RETRY", "RESOLUTION")],
       }),
     ]);
     render(<NotificationBell />);
@@ -444,15 +492,20 @@ describe("NotificationBell", () => {
 
     fireEvent.click(
       screen.getByRole("button", {
-        name: "VIEW_FILE: Password-protected document",
+        name: "DECRYPT_AND_RETRY: Password-protected document",
       }),
     );
+    const field = screen.getByLabelText(
+      "Document password: Password-protected document",
+    );
+    fireEvent.change(field, { target: { value: "nope" } });
+    fireEvent.submit(field.closest("form") as HTMLFormElement);
 
     expect(await screen.findByRole("alert")).toHaveProperty(
       "textContent",
-      "Could not open",
+      "Wrong password",
     );
-    // Still on screen, so the row remains actionable.
+    // Still on screen, so the user can try another password.
     expect(screen.getByText("Password-protected document")).toBeTruthy();
   });
 

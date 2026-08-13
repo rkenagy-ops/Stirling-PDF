@@ -586,6 +586,17 @@ class FileRunEventServiceTest {
         }
 
         @Test
+        void carriesTheKindsPlacementIntentForEachOffer() {
+            FileRunEvent mine = givenHitBy(ACTOR, FailureKind.INPUT_PASSWORD_PROTECTED, TEAM, "f1");
+
+            assertThat(service.availableActions(mine))
+                    .filteredOn(action -> action.id() == FailureActionId.DECRYPT_AND_RETRY)
+                    .singleElement()
+                    .extracting(FileRunEventService.AvailableAction::slot)
+                    .isEqualTo(FailureActionSlot.RESOLUTION);
+        }
+
+        @Test
         void carriesTheLabelKeyForEachOffer() {
             FileRunEvent event = given(FailureKind.UNKNOWN, TEAM, "f1");
 

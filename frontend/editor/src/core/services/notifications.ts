@@ -26,6 +26,12 @@ export type NotificationOwnership = "MINE" | "THEIRS" | "UNOWNED";
 export type NotificationActionExecution = "SERVER" | "CLIENT";
 
 /**
+ * How much of the row an action has earned. The server ranks by what the action does, not by where it
+ * ends up on screen; {@link promoteActions} turns a slot into a button or a menu entry.
+ */
+export type NotificationActionSlot = "RESOLUTION" | "SECONDARY" | "OVERFLOW";
+
+/**
  * One action as offered for one notification. `id` is a plain string rather than a union because the
  * server may know actions this build does not, and the client skips the ones it cannot perform.
  */
@@ -35,6 +41,7 @@ export interface NotificationActionOffer {
   /** English fallback, for a build with no copy for `labelKey`. */
   defaultLabel: string;
   execution: NotificationActionExecution;
+  slot: NotificationActionSlot;
   /** False means the server will refuse it. The bell renders no button and states the reason
    *  instead; the portal's queue still shows it disabled. */
   enabled: boolean;

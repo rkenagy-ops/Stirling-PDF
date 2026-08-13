@@ -252,7 +252,8 @@ public class FileRunEventService {
             boolean unattended,
             boolean documentless) {
         String reason = disabledReasonFor(offer.audience(), closed, unattended, documentless);
-        return new AvailableAction(offer.id(), offer.labelKey(), reason == null, reason);
+        return new AvailableAction(
+                offer.id(), offer.labelKey(), offer.slot(), reason == null, reason);
     }
 
     /**
@@ -363,7 +364,14 @@ public class FileRunEventService {
         return applicationProperties.getSecurity().isEnableLogin();
     }
 
-    /** One action as offered to one caller about one event, with its availability resolved. */
+    /**
+     * One action as offered to one caller about one event, with its availability resolved. {@code
+     * slot} is the kind's placement intent, carried through for the client to make the final call.
+     */
     public record AvailableAction(
-            FailureActionId id, String labelKey, boolean enabled, String disabledReasonKey) {}
+            FailureActionId id,
+            String labelKey,
+            FailureActionSlot slot,
+            boolean enabled,
+            String disabledReasonKey) {}
 }
