@@ -6,5 +6,7 @@ export const qk = {
     ["editor", "endpointEnabled", endpoint] as const,
   footerInfo: () => ["editor", "footerInfo"] as const,
   groupEnabled: (group: string) => ["editor", "groupEnabled", group] as const,
+  toolRecommendations: (context: string, limit: number) =>
+    ["editor", "toolRecommendations", context, limit] as const,
   users: () => ["editor", "users"] as const,
 } as const;
